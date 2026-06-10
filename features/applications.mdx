@@ -1,0 +1,181 @@
+---
+title: "Application Workflow: Apply, Review, Accept, or Reject"
+sidebarTitle: "Applications"
+description: "Explore the full application lifecycle from student submission to company review, acceptance or rejection, with database-level duplicate prevention."
+---
+
+The application system connects students to the internships they are interested in and gives companies a structured workflow for reviewing candidates. Students submit applications with a single click; companies receive instant in-app notifications and can then filter, review, and action each application. A database-level uniqueness constraint ensures a student can never accidentally submit two applications to the same internship, and the same protection is mirrored at the view level using `get_or_create`.
+
+---
+
+## Application Model
+
+Every application is a record linking a `student` user to an `internship`, with a `status` field that progresses from `pending` through to `accepted` or `rejected`.
+
+<ParamField path="id" type="integer">
+  Auto-incrementing primary key.
+</ParamField>
+
+<ParamField path="student" type="ForeignKey → User" required>
+  The student who submitted the application. Accessible in reverse as `user.applications.all()`. Deleting the user cascades and removes all their applications.
+</ParamField>
+
+<ParamField path="internship" type="ForeignKey → Internship" required>
+  The internship being applied to. Accessible in reverse as `internship.applications.all()`. Deleting the internship cascades and removes all related applications.
+</ParamField>
+
+<ParamField path="status" type="string" default="pending">
+  Current state of the application. One of `"pending"`, `"accepted"`, or `"rejected"`. Defaults to `"pending"` on submission. Updated by the owning company via `POST /applications/<id>/<status>/`.
+</ParamField>
+
+<ParamField path="created_at" type="datetime">
+  Timestamp set automatically when the application is first submitted (`auto_now_add=True`). Read-only after creation.
+</ParamField>
+
+The model declares a `unique_together` constraint on `(student, internship)` that is enforced at the database level:
+
+```python
+# applications/models.py
+class Meta:
+    unique_together = ("student", "internship")  # prevents duplicates
+```
+
+This means the database will reject any attempt to insert a second application for the same `(student, internship)` pair, regardless of how the insert originates.
+
+---
+
+## URL Routes
+
+All application routes are mounted under the `/applications/` prefix.
+
+| Method | Path | View | Description |
+|--------|------|------|-------------|
+| `POST` | `/applications/apply/<internship_id>/` | `apply_internship` | Submit an application (student) |
+| `GET` | `/applications/my/` | `my_applications` | Student's own application list |
+| `GET` | `/applications/company/` | `company_applications` | All applications received by the company |
+| `POST` | `/applications/<id>/<status>/` | `update_application` | Set status to `accepted` or `rejected` (company) |
+| `POST` | `/applications/notifications/read/` | `mark_notifications_read` | Mark all unread notifications as read |
+
+```python
+# applications/urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path("apply/<int:internship_id>/", views.apply_internship, name="apply"),
+    path("my/", views.my_applications, name="my_applications"),
+    path("company/", views.company_applications, name="company_applications"),
+    path(
+        "<int:app_id>/<str:status>/",
+        views.update_application,
+        name="update_application",
+    ),
+    path(
+        "notifications/read/",
+        views.mark_notifications_read,
+        name="mark_notifications_read",
+    ),
+]
+```
+
+---
+
+## Application Submission
+
+When a student clicks **Apply** on a listing, the `apply_internship` view uses Django's `get_or_create` to either create a fresh application or silently retrieve the existing one. This mirrors the database constraint at the application layer, so the view never raises an `IntegrityError` and can give the user a helpful feedback message instead:
+
+```python
+# applications/views.py  —  apply_internship()
+@login_required
+def apply_internship(request, internship_id):
+    internship = get_object_or_404(Internship, id=internship_id)
+
+    application, created = Application.objects.get_or_create(
+        student=request.user, internship=internship
+    )
+
+    if created:
+        messages.success(request, "Application submitted successfully!")
+        Notification.objects.create(
+            user=internship.company,
+            message=f"New application received for {internship.title}",
+        )
+    else:
+        messages.info(request, "You already applied to this internship.")
+
+    return redirect("/internships/")
+```
+
+- If `created` is `True` → a new `Application` row was inserted, a success message is shown, and the company receives a notification.
+- If `created` is `False` → the student already has an application for this internship; an info message is shown and no duplicate is created.
+
+---
+
+## Status Filtering
+
+The company applications view at `GET /applications/company/` accepts an optional `?status=` query-string parameter. When present and not `"all"`, it narrows the queryset to applications in that state:
+
+```python
+# applications/views.py  —  company_applications()
+@login_required
+def company_applications(request):
+    status = request.GET.get("status", "all")
+
+    applications = Application.objects.filter(internship__company=request.user)
+
+    if status != "all":
+        applications = applications.filter(status=status)
+
+    return render(
+        request,
+        "applications/company_applications.html",
+        {"applications": applications, "current_status": status},
+    )
+```
+
+Valid filter values and their example URLs:
+
+| Value | URL | Result |
+|-------|-----|--------|
+| `all` (default) | `GET /applications/company/` | Every application across all listings |
+| `pending` | `GET /applications/company/?status=pending` | Only unreviewed applications |
+| `accepted` | `GET /applications/company/?status=accepted` | Only accepted candidates |
+| `rejected` | `GET /applications/company/?status=rejected` | Only rejected candidates |
+
+---
+
+## Accepting and Rejecting
+
+A company updates an application's status by posting to `POST /applications/<id>/<status>/`. The view first verifies that the logged-in user owns the internship linked to this application, then validates the status value before saving:
+
+```python
+# applications/views.py  —  update_application()
+@login_required
+def update_application(request, app_id, status):
+    application = get_object_or_404(Application, id=app_id)
+
+    # Only the owning company can manage this application
+    if application.internship.company != request.user:
+        return redirect("/")
+
+    if status in ["accepted", "rejected"]:
+        application.status = status
+        application.save()
+
+        Notification.objects.create(
+            user=application.student,
+            message=f"Your application for {application.internship.title} was {status}",
+        )
+
+    messages.success(request, f"Application {status} successfully!")
+    return redirect("/applications/company/")
+```
+
+Two things happen atomically when a status update is saved:
+
+1. The `Application.status` field is updated to `"accepted"` or `"rejected"`.
+2. A `Notification` record is created for the student informing them of the outcome.
+
+<Warning>
+  Application status can only be set to `"accepted"` or `"rejected"` — the `update_application` view explicitly validates `if status in ["accepted", "rejected"]` before making any changes. Requests with any other status value in the URL (e.g. `/applications/5/pending/`) are silently ignored; the application record is not modified.
+</Warning>

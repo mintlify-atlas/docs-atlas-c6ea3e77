@@ -1,0 +1,135 @@
+---
+title: "Student Guide: Find and Apply for Internships"
+sidebarTitle: "Student Guide"
+description: "Learn how to register as a student, browse internship listings, submit applications, track their status, and manage your profile and CV."
+---
+
+The Internship Portal gives students a single place to discover real opportunities, apply with one click, and follow every application from submission through to a final decision. Once registered, your personalised dashboard links you directly to the internship catalogue, your application history, and your profile — all without leaving the portal.
+
+## Getting Started as a Student
+
+New users can create an account in seconds. Head to `/users/register/`, fill in your chosen username and password, and — crucially — select **Student** as your user type. The portal uses this choice to tailor your entire experience: only students see the Apply button on listings, and only students have a CV and skills section in their profile.
+
+After a successful registration you are automatically logged in and redirected to `/users/profile/` so you can complete your details straight away. From there, navigate to `/users/dashboard/` at any time to return to your home base.
+
+## Your Dashboard
+
+The student dashboard at `/users/dashboard/` presents three action cards side by side, each linking to a key area of the portal.
+
+<CardGroup cols={3}>
+  <Card title="Browse Internships" icon="magnifying-glass">
+    Explore all active internship listings posted by companies and click through to apply. Navigate to `/internships/`.
+  </Card>
+  <Card title="My Applications" icon="file-lines">
+    Track every application you have submitted and see whether it is pending, accepted, or rejected. Navigate to `/applications/my/`.
+  </Card>
+  <Card title="My Profile" icon="circle-user">
+    Update your CV, skills, bio, and personal information that companies see when reviewing your application. Navigate to `/users/profile/`.
+  </Card>
+</CardGroup>
+
+A greeting at the top of the page displays your username, and the navbar shows your **Student** role badge alongside the notification bell so you always know which account type is active.
+
+## Browsing Internships
+
+All active internships posted by companies on the platform are visible to students at `/internships/`. The list is automatically filtered to show only `active` listings — closed positions do not appear here.
+
+<Steps>
+  <Step title="Open the internship list">
+    Navigate to `/internships/` directly from the navbar or by clicking **Open** on the Browse Internships card in your dashboard. Each card in the list shows the internship title, the posting company, and the location at a glance.
+  </Step>
+  <Step title="Review the available listings">
+    Scan the listing cards. Each one displays the **title**, **company name**, and **location**. Active internships are marked with a green **Active** badge so you can quickly skip any that may be visible to you as an admin preview.
+  </Step>
+  <Step title="Open a full detail page">
+    Click the **View** button on any card to open the detail page at `/internships/<id>/`. Here you can read the full description the company has provided, review the location, and decide whether to apply.
+  </Step>
+  <Step title="Check your eligibility to apply">
+    At the bottom of the detail page, the portal checks whether you have already submitted an application for this internship. If you have not, an **Apply** button is displayed. If you have already applied, the button is replaced by a status indicator so you never accidentally submit twice.
+  </Step>
+</Steps>
+
+## Applying to an Internship
+
+Submitting an application is intentionally frictionless — there is no separate application form to fill in. Your profile information is already on file, and companies can access it directly.
+
+When you click **Apply** on the detail page, the browser sends a `POST` request to `/applications/apply/<id>/`. The portal then:
+
+1. Creates an `Application` record linking your account to the internship.
+2. Displays a success banner: *"Application submitted successfully!"*
+3. Sends an automatic notification to the company so they know a new candidate has arrived.
+4. Redirects you back to `/internships/` so you can continue browsing.
+
+**Duplicate prevention** — if you navigate back to the same internship and click Apply again (or reach the URL directly), the portal detects the existing record via `get_or_create` and shows an info message instead:
+
+> *"You already applied to this internship."*
+
+No duplicate application is created, and you are redirected back to the list as normal.
+
+## Tracking Your Applications
+
+Every application you have ever submitted is collected at `/applications/my/`, reachable from the **My Applications** card on your dashboard.
+
+The page lists each application with the following information:
+
+| Field | Values |
+|-------|--------|
+| Internship title | Name of the role |
+| Company | The posting organisation |
+| Status | `pending` · `accepted` · `rejected` |
+
+Applications start with a status of **pending** immediately after submission. When a company reviews your application and makes a decision, the status is updated to either **accepted** or **rejected**, and you receive an automatic notification (see [Notifications](#notifications) below).
+
+<Note>
+  You cannot withdraw an application once submitted. Contact the company directly through the contact details on their public profile if you need to retract your candidacy.
+</Note>
+
+## Managing Your Profile
+
+Your profile is visible to companies when they review your application, so keeping it up to date directly improves your chances. The profile page lives at `/users/profile/`.
+
+<Steps>
+  <Step title="Open your profile">
+    Go to `/users/profile/` via the **Profile** button in the top navigation bar or the **My Profile** card on your dashboard. The page shows your current information exactly as a company would see it.
+  </Step>
+  <Step title="Enter edit mode">
+    Click the **Edit Profile** button to navigate to `/users/profile/edit/`. All fields become editable.
+  </Step>
+  <Step title="Update your personal details">
+    Fill in or update the following student-specific fields:
+
+    | Field | Description |
+    |-------|-------------|
+    | Full Name | Your real first and last name |
+    | University | The institution you are enrolled at |
+    | Degree | Your programme title (e.g. BSc Computer Science) |
+    | Skills | A comma-separated or free-text list of technical and soft skills |
+    | Bio | A short paragraph about yourself and your career goals |
+  </Step>
+  <Step title="Upload your CV">
+    Use the **CV** file input to upload your CV. The portal accepts PDF and standard document formats. The file is stored under the `cvs/` upload path and linked to your profile. Uploading a new file replaces the previous one.
+  </Step>
+  <Step title="Add or update your profile picture">
+    Upload a profile picture using the **Profile Picture** input. The image is stored under `profile_pictures/` and displayed as a small circular thumbnail next to your name in the navbar. If you want to remove the current picture without replacing it, tick the **Remove Picture** checkbox before saving.
+  </Step>
+  <Step title="Save your changes">
+    Click **Save** to submit the form. The portal saves all fields and redirects you back to `/users/profile/` with a success message: *"Profile updated successfully!"*
+  </Step>
+</Steps>
+
+## Notifications
+
+The portal uses an in-app notification system to keep you informed without requiring you to constantly check your application list. Unread notifications are counted and displayed in the 🔔 bell icon in the top navigation bar.
+
+Click the bell to drop down a list of your recent notifications. Common notification messages include:
+
+```
+Your application for [Internship Title] was accepted
+Your application for [Internship Title] was rejected
+```
+
+Clicking the bell also marks all unread notifications as read via a background `POST` to `/applications/notifications/read/`, and the counter resets to **0** immediately in the UI — no page reload required.
+
+<Tip>
+  Keep your profile complete — companies can view your public profile at `/users/profile/<id>/` when reviewing your application. A filled-in bio, a visible skills list, and an uploaded CV significantly increase the information a company has to make their decision.
+</Tip>

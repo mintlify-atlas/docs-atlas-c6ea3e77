@@ -1,0 +1,288 @@
+---
+title: "Extending Internship Portal: Add Features and Customize"
+sidebarTitle: "Extending"
+description: "Learn how to extend Internship Portal by adding model fields, creating new Django apps, switching databases, and wiring custom notifications."
+---
+
+Internship Portal is intentionally designed as a solid starting point rather than a locked-down product. The three-app structure, service layer pattern, and signal-based automation make it straightforward to add new fields, introduce entirely new Django apps, swap the database backend, or hook into the notification system. This page walks through the most common extension scenarios.
+
+## Adding Profile Fields
+
+Student and company profiles are defined on a single `Profile` model in `users/models.py`. Adding a new field — for example, a student's expected graduation year — requires a model change, a migration, a template update, and a view update.
+
+<Steps>
+  <Step title="Add the field to the Profile model">
+    Open `users/models.py` and add your new field under the appropriate section comment.
+
+    ```python
+    # users/models.py
+
+    # ===== STUDENT FIELDS =====
+    full_name = models.CharField(max_length=100, blank=True)
+    university = models.CharField(max_length=100, blank=True)
+    degree = models.CharField(max_length=100, blank=True)
+    skills = models.TextField(blank=True)
+    bio = models.TextField(blank=True)
+    graduation_year = models.IntegerField(null=True, blank=True)  # new field
+    ```
+  </Step>
+  <Step title="Create and run the migration">
+    Django's migration framework will detect the new field and generate the corresponding schema change.
+
+    ```bash
+    python manage.py makemigrations users
+    python manage.py migrate
+    ```
+  </Step>
+  <Step title="Update the edit profile template">
+    Add the new input to `users/templates/users/edit_profile.html` inside the student section of the form so it is presented to students when they edit their profile.
+
+    ```html
+    <div class="form-group">
+      <label for="graduation_year">Graduation Year</label>
+      <input
+        type="number"
+        id="graduation_year"
+        name="graduation_year"
+        value="{{ profile.graduation_year|default:'' }}"
+        class="form-control"
+      />
+    </div>
+    ```
+  </Step>
+  <Step title="Handle the POST data in the edit_profile view">
+    In `users/views.py`, retrieve the submitted value from `request.POST` and save it to the profile object.
+
+    ```python
+    # Inside the edit_profile view, after reading other POST fields:
+    profile.graduation_year = request.POST.get("graduation_year") or None
+    profile.save()
+    ```
+  </Step>
+</Steps>
+
+## Adding a New Internship Field
+
+The `Internship` model in `internships/models.py` follows exactly the same extension pattern. For example, adding a `stipend` field:
+
+<Steps>
+  <Step title="Add the field to the Internship model">
+    ```python
+    # internships/models.py
+
+    title = models.CharField(max_length=200)
+    company = models.ForeignKey(User, on_delete=models.CASCADE, related_name="internships")
+    location = models.CharField(max_length=100)
+    description = models.TextField()
+    stipend = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)  # new
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="active")
+    created_at = models.DateTimeField(auto_now_add=True)
+    ```
+  </Step>
+  <Step title="Create and run the migration">
+    ```bash
+    python manage.py makemigrations internships
+    python manage.py migrate
+    ```
+  </Step>
+  <Step title="Update templates and the service layer">
+    Add the field to `internships/templates/internships/create.html` and `edit.html` forms, and display it in `detail.html`. Then update `create_internship()` and `update_internship()` in `internships/services.py` to accept and pass through the new parameter.
+
+    ```python
+    # internships/services.py
+
+    def create_internship(user, title, location, description, stipend=None):
+        return Internship.objects.create(
+            title=title,
+            location=location,
+            description=description,
+            company=user,
+            stipend=stipend,
+        )
+    ```
+  </Step>
+</Steps>
+
+## Switching to PostgreSQL
+
+The default database backend is SQLite, configured in `config/settings.py`. For a production deployment, replace the `DATABASES` setting with a PostgreSQL connection.
+
+<Steps>
+  <Step title="Update DATABASES in config/settings.py">
+    ```python
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': 'internship_portal_db',
+            'USER': 'your_db_user',
+            'PASSWORD': 'your_db_password',
+            'HOST': 'localhost',
+            'PORT': '5432',
+        }
+    }
+    ```
+  </Step>
+  <Step title="Install the PostgreSQL adapter">
+    Add `psycopg2-binary` to your `requirements.txt` (or install it directly):
+
+    ```bash
+    pip install psycopg2-binary
+    ```
+  </Step>
+  <Step title="Run migrations against the new database">
+    ```bash
+    python manage.py migrate
+    ```
+
+    Django will apply all existing migrations to the fresh PostgreSQL database, creating all tables from scratch.
+  </Step>
+</Steps>
+
+<Warning>
+  Never commit database credentials directly to source control. Use environment variables or a tool like `django-environ` to load secrets from a `.env` file, and add that file to `.gitignore`.
+</Warning>
+
+## Adding a New Django App
+
+When a new feature domain is large enough to warrant its own models, views, and URLs, create a new Django app.
+
+<Steps>
+  <Step title="Scaffold the app">
+    ```bash
+    python manage.py startapp myapp
+    ```
+
+    This creates a `myapp/` directory with `models.py`, `views.py`, `admin.py`, `apps.py`, `tests.py`, and a `migrations/` package.
+  </Step>
+  <Step title="Register the app in INSTALLED_APPS">
+    Open `config/settings.py` and add the new app to the `INSTALLED_APPS` list:
+
+    ```python
+    INSTALLED_APPS = [
+        # Django built-ins ...
+        "internships",
+        "applications",
+        "users.apps.UsersConfig",
+        "myapp",  # add your new app here
+    ]
+    ```
+  </Step>
+  <Step title="Create models, views, and URLs">
+    Define your models in `myapp/models.py`, create views in `myapp/views.py`, and wire them up in a new `myapp/urls.py`:
+
+    ```python
+    # myapp/urls.py
+    from django.urls import path
+    from . import views
+
+    app_name = "myapp"
+
+    urlpatterns = [
+        path("", views.index, name="index"),
+    ]
+    ```
+  </Step>
+  <Step title="Include the app's URLs in config/urls.py">
+    ```python
+    from django.urls import path, include
+
+    urlpatterns = [
+        # existing paths ...
+        path("myapp/", include("myapp.urls")),
+    ]
+    ```
+  </Step>
+  <Step title="Run migrations">
+    ```bash
+    python manage.py makemigrations myapp
+    python manage.py migrate
+    ```
+  </Step>
+</Steps>
+
+## Custom Notifications
+
+The `Notification` model in `applications/models.py` is a general-purpose in-app messaging mechanism. Any view, signal handler, or service function can create a notification for any user by calling `Notification.objects.create()` directly — no additional infrastructure is required.
+
+```python
+from applications.models import Notification
+
+# Send a notification to a specific user from anywhere in the codebase
+Notification.objects.create(
+    user=target_user,
+    message="Your message here",
+)
+```
+
+For example, if you add a `messages` feature between companies and students, you could notify the recipient whenever a new message arrives:
+
+```python
+from applications.models import Notification
+
+def send_message(sender, recipient, content):
+    # ... save the message to your Message model ...
+    Notification.objects.create(
+        user=recipient,
+        message=f"New message from {sender.username}",
+    )
+```
+
+Unread notifications are automatically surfaced in the navigation bar on every page via the `users.context_processors.notifications` context processor, so new notification types appear without any additional template work.
+
+## Running Tests
+
+Each app ships with a `tests.py` file generated by Django's `startapp` command. Run the full test suite with:
+
+```bash
+python manage.py test
+```
+
+To run tests for a single app:
+
+```bash
+python manage.py test users
+python manage.py test internships
+python manage.py test applications
+```
+
+Because the service layer functions in `internships/services.py` operate purely on the ORM and accept plain Python arguments, they are especially straightforward to test in isolation using Django's `TestCase` — no view client or URL dispatch needed.
+
+```python
+# internships/tests.py
+from django.test import TestCase
+from django.contrib.auth.models import User
+from internships.services import create_internship, toggle_internship_status
+
+
+class InternshipServiceTests(TestCase):
+    def setUp(self):
+        self.company = User.objects.create_user(username="acme", password="pass")
+
+    def test_create_internship(self):
+        internship = create_internship(
+            user=self.company,
+            title="Backend Intern",
+            location="Remote",
+            description="Work on our API.",
+        )
+        self.assertEqual(internship.title, "Backend Intern")
+        self.assertEqual(internship.status, "active")
+
+    def test_toggle_internship_status(self):
+        internship = create_internship(
+            user=self.company,
+            title="Frontend Intern",
+            location="London",
+            description="Work on our UI.",
+        )
+        toggled = toggle_internship_status(internship)
+        self.assertEqual(toggled.status, "closed")
+```
+
+<Tip>
+  The service layer pattern in `internships/services.py` is a good pattern to follow for all new business logic — keep views thin and put ORM queries and domain rules in service functions. This makes your logic reusable across views, management commands, and tests without any HTTP overhead.
+</Tip>
+
+<Note>
+  When adding file upload fields (like a new document type or avatar variant), ensure `MEDIA_ROOT` is configured and Django's media URL is included in development. This is already handled in `config/urls.py` via `urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)` — any new `FileField` or `ImageField` with a valid `upload_to` path will work automatically in development without additional configuration.
+</Note>

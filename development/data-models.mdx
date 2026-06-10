@@ -1,0 +1,217 @@
+---
+title: "Data Models: Profile, Internship, Application, and Notification"
+sidebarTitle: "Data Models"
+description: "Reference for all four Django models in Internship Portal — their fields, relationships, constraints, and how they are registered in the Django admin."
+---
+
+Internship Portal's data layer is built on four Django models spread across two apps. `Profile` (in `users`) extends Django's built-in `User` with role-specific fields. `Internship` (in `internships`) represents a job listing owned by a company user. `Application` (in `applications`) links a student to an internship with a lifecycle status, and `Notification` (also in `applications`) delivers in-app messages to any user. Together they form the complete relational backbone of the portal.
+
+## Profile Model
+
+The `Profile` model lives in `users/models.py` and is attached to Django's `User` via a `OneToOneField`. Rather than using two separate models for students and companies, all role-specific fields coexist on a single model — unused fields are left blank. The `user_type` field determines which fields are relevant for a given account.
+
+```python
+from django.db import models
+from django.contrib.auth.models import User
+
+
+class Profile(models.Model):
+    USER_TYPES = (
+        ("student", "Student"),
+        ("company", "Company"),
+    )
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    user_type = models.CharField(max_length=10, choices=USER_TYPES)
+
+    # ===== STUDENT FIELDS =====
+    full_name = models.CharField(max_length=100, blank=True)
+    university = models.CharField(max_length=100, blank=True)
+    degree = models.CharField(max_length=100, blank=True)
+    skills = models.TextField(blank=True)
+    bio = models.TextField(blank=True)
+
+    # ===== COMPANY FIELDS =====
+    company_name = models.CharField(max_length=100, blank=True)
+    industry = models.CharField(max_length=100, blank=True)
+    website = models.URLField(blank=True)
+    location = models.CharField(max_length=100, blank=True)
+    cv = models.FileField(upload_to="cvs/", blank=True, null=True)
+
+    profile_picture = models.ImageField(
+        upload_to="profile_pictures/", blank=True, null=True
+    )
+
+    def __str__(self):
+        return self.user.username
+```
+
+**Field reference:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `user` | `OneToOneField` → `User` | CASCADE delete; reverse accessor `user.profile` |
+| `user_type` | `CharField` | Choices: `student` or `company` |
+| `full_name` | `CharField(100)` | Student — legal name |
+| `university` | `CharField(100)` | Student — institution name |
+| `degree` | `CharField(100)` | Student — programme/degree title |
+| `skills` | `TextField` | Student — free-text skills list |
+| `bio` | `TextField` | Student — short personal statement |
+| `company_name` | `CharField(100)` | Company — registered business name |
+| `industry` | `CharField(100)` | Company — sector |
+| `website` | `URLField` | Company — public website |
+| `location` | `CharField(100)` | Company — city/country |
+| `cv` | `FileField` | Student — uploaded to `media/cvs/` |
+| `profile_picture` | `ImageField` | Both — uploaded to `media/profile_pictures/` |
+
+## Internship Model
+
+The `Internship` model lives in `internships/models.py` and represents a single job listing created by a company user. Its `status` field controls visibility to students.
+
+```python
+from django.db import models
+from django.contrib.auth.models import User
+
+
+class Internship(models.Model):
+    STATUS_CHOICES = (
+        ("active", "Active"),
+        ("closed", "Closed"),
+    )
+
+    title = models.CharField(max_length=200)
+    company = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="internships"
+    )
+    location = models.CharField(max_length=100)
+    description = models.TextField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="active")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.title} - {self.company.username}"
+```
+
+**Field reference:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `title` | `CharField(200)` | Listing headline |
+| `company` | `ForeignKey` → `User` | CASCADE delete; reverse accessor `user.internships` |
+| `location` | `CharField(100)` | City or remote designation |
+| `description` | `TextField` | Full listing description |
+| `status` | `CharField(10)` | `active` (default) or `closed` |
+| `created_at` | `DateTimeField` | Set automatically on creation |
+
+A company can toggle an internship between `active` and `closed` at any time via the `toggle_internship_status()` service function. Only `active` internships are surfaced to students in the public listing.
+
+## Application Model
+
+The `Application` model lives in `applications/models.py` and records a student's intent to apply for an internship. A `unique_together` constraint at the database level guarantees that one student cannot submit more than one application per internship.
+
+```python
+from django.db import models
+from django.contrib.auth.models import User
+from internships.models import Internship
+
+
+class Application(models.Model):
+    STATUS_CHOICES = (
+        ("pending", "Pending"),
+        ("accepted", "Accepted"),
+        ("rejected", "Rejected"),
+    )
+
+    student = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="applications"
+    )
+    internship = models.ForeignKey(
+        Internship, on_delete=models.CASCADE, related_name="applications"
+    )
+
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("student", "internship")  # prevents duplicates
+
+    def __str__(self):
+        return f"{self.student.username} → {self.internship.title}"
+```
+
+**Field reference:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `student` | `ForeignKey` → `User` | CASCADE delete; reverse accessor `user.applications` |
+| `internship` | `ForeignKey` → `Internship` | CASCADE delete; reverse accessor `internship.applications` |
+| `status` | `CharField(10)` | `pending` (default), `accepted`, or `rejected` |
+| `created_at` | `DateTimeField` | Set automatically on creation |
+
+The `unique_together = ("student", "internship")` constraint means the view can safely use `get_or_create()` — if the application already exists it is returned rather than duplicated, and the user sees an informational message instead of an error.
+
+## Notification Model
+
+The `Notification` model also lives in `applications/models.py` and supports simple in-app messaging. Notifications are created automatically when a student applies to an internship (alerting the company) and when a company accepts or rejects an application (alerting the student).
+
+```python
+class Notification(models.Model):
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="notifications"
+    )
+    message = models.CharField(max_length=255)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.message
+```
+
+**Field reference:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `user` | `ForeignKey` → `User` | CASCADE delete; reverse accessor `user.notifications` |
+| `message` | `CharField(255)` | Human-readable notification text |
+| `is_read` | `BooleanField` | `False` by default; set to `True` on dismissal |
+| `created_at` | `DateTimeField` | Set automatically on creation |
+
+Unread notifications are injected into every template request via the `users.context_processors.notifications` context processor, which queries `Notification.objects.filter(user=request.user, is_read=False)` and exposes both the queryset and count.
+
+## Entity Relationships
+
+The diagram below describes the relationships between all four models and Django's built-in `User`:
+
+- **User → Profile** (1:1) — every `User` has exactly one `Profile`, auto-created via the `post_save` signal in `users/signals.py`.
+- **User (company) → Internship** (1:N) — a company user can own many `Internship` listings; deleting the user cascades and removes all their listings.
+- **User (student) → Application** (1:N) — a student user can submit many `Application` records; a `unique_together` constraint limits one application per internship.
+- **Internship → Application** (1:N) — each `Internship` can receive many `Application` records from different students.
+- **User → Notification** (1:N) — any user (student or company) can have many `Notification` records; unread count is surfaced in the nav bar.
+
+## Admin Registration
+
+Both `internships/admin.py` and `users/admin.py` register models with Django's built-in admin site.
+
+<CodeGroup>
+```python internships/admin.py
+from django.contrib import admin
+from .models import Internship
+
+
+@admin.register(Internship)
+class InternshipAdmin(admin.ModelAdmin):
+    list_display = ("title", "company", "location", "status", "created_at")
+    list_filter = ("status", "location")
+    search_fields = ("title", "description")
+```
+
+```python users/admin.py
+from django.contrib import admin
+from .models import Profile
+
+admin.site.register(Profile)
+```
+</CodeGroup>
+
+`InternshipAdmin` uses the `@admin.register` decorator and configures `list_display` to show all key columns in the changelist view, `list_filter` to allow filtering by `status` and `location` in the sidebar, and `search_fields` to enable full-text search across `title` and `description`. `Profile` is registered with default settings, giving admins full CRUD access without additional configuration.

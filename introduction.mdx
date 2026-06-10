@@ -1,0 +1,50 @@
+---
+title: "Internship Portal: Role-Based Django Internship Platform"
+sidebarTitle: "Introduction"
+description: "Internship Portal is a full-stack Django web app connecting students and companies through role-based internship listings, applications, and notifications."
+---
+
+Internship Portal is a server-rendered Django web application that bridges the gap between students seeking practical experience and companies looking for interns. Students can browse active listings, submit applications with their CV, and track status updates in real time. Companies register separately, post internship opportunities, and manage incoming applications — accepting or rejecting candidates — all from a clean Bootstrap 5 interface. No external API or mobile client is required; everything runs as a traditional Django project with HTML templates and server-side views.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Role-Based User Accounts" icon="users" href="/features/user-roles">
+    Two distinct account types — Student and Company — each with their own profile fields, dashboards, and permissions. Students fill in university, degree, skills, and bio; companies provide a name, industry, website, and location.
+  </Card>
+  <Card title="Internship Listings" icon="briefcase" href="/features/internships">
+    Companies can create, manage, and close internship postings with a title, location, description, and an active/closed status flag. Students browse only active listings and can view full details before applying.
+  </Card>
+  <Card title="Applications & Status Tracking" icon="file-check" href="/features/applications">
+    Students submit one application per internship (duplicates are prevented at the database level). Companies review pending applications and move them to Accepted or Rejected. Each transition is logged for audit.
+  </Card>
+  <Card title="In-App Notifications" icon="bell" href="/features/notifications">
+    A lightweight Notification model keeps students informed whenever their application status changes. Unread notification counts are injected into every page via a custom context processor so the header badge always stays current.
+  </Card>
+</CardGroup>
+
+## Tech Stack
+
+Internship Portal is intentionally lean, relying on well-understood, battle-tested components:
+
+| Layer | Technology |
+|---|---|
+| Backend framework | Django (Python) |
+| Default database | SQLite (`db.sqlite3`) |
+| Frontend styling | Bootstrap 5 (CDN) |
+| File storage | Local filesystem via `MEDIA_ROOT` |
+| Deployment interfaces | WSGI (`config/wsgi.py`) and ASGI (`config/asgi.py`) |
+
+The project is organized into three custom Django apps that map directly to the domain model:
+
+- **`users`** — `Profile` model extending Django's built-in `User`; handles registration, login, profile editing, and the notifications context processor.
+- **`internships`** — `Internship` model owned by a company `User`; covers listing creation, browsing, and status management.
+- **`applications`** — `Application` and `Notification` models; manages the student → internship relationship and drives status-change notifications.
+
+## How It Works
+
+A new visitor registers at `/users/register/` and selects either the Student or Company role, which determines which profile fields and dashboard views they see. Companies then navigate to the internships section to post new listings, while students browse the same listings and submit applications. When a company reviews an application and marks it as accepted or rejected, the portal automatically creates a `Notification` record for the student. Students can view their notification feed at any time to stay informed — all without leaving the browser or calling an external service.
+
+<Note>
+  Internship Portal does **not** expose a REST or GraphQL API. It is a fully server-rendered Django application: every route returns an HTML response rendered from a Django template. If you need a headless API layer, you would need to add Django REST Framework or a similar package yourself.
+</Note>

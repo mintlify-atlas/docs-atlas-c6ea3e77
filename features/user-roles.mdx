@@ -1,0 +1,188 @@
+---
+title: "User Roles: Students and Companies in Internship Portal"
+sidebarTitle: "User Roles"
+description: "Learn how students and companies register, what each profile contains, and which actions each role can perform in the Internship Portal."
+---
+
+The Internship Portal is built around two distinct user roles: **students** and **companies**. Every registered account belongs to one of these roles, and the role determines which views, actions, and data are available to that user. The role is set at registration time and stored on the user's `Profile` record, which is auto-created alongside each new Django `User`.
+
+<Tabs>
+  <Tab title="Student">
+    ### Student Profile
+
+    A student account is designed for individuals who want to browse open internship listings and submit applications. After registering, a student can fill out their profile with academic and personal details that help companies evaluate their applications.
+
+    **Profile fields available to students:**
+
+    | Field             | Description                                    |
+    |-------------------|------------------------------------------------|
+    | `full_name`       | The student's full display name                |
+    | `university`      | Name of the student's university or college    |
+    | `degree`          | Degree programme or field of study             |
+    | `skills`          | Free-text list of relevant technical skills    |
+    | `bio`             | Short personal statement or introduction       |
+    | `cv`              | Uploaded CV file (stored under `cvs/`)         |
+    | `profile_picture` | Avatar image (stored under `profile_pictures/`)|
+
+    **What students can do:**
+
+    - Browse all **active** internship listings at `GET /internships/`
+    - View full internship details at `GET /internships/<id>/`
+    - Submit an application with one click from the detail page
+    - Track submitted applications and their statuses at `GET /applications/my/`
+    - Edit their profile (including uploading a CV and profile picture) at `POST /users/edit-profile/`
+    - Receive in-app notifications when a company accepts or rejects their application
+  </Tab>
+  <Tab title="Company">
+    ### Company Profile
+
+    A company account is for organisations that want to post internship opportunities and manage candidates. After registering, a company can complete its profile with business details that are displayed alongside each listing.
+
+    **Profile fields available to companies:**
+
+    | Field          | Description                                      |
+    |----------------|--------------------------------------------------|
+    | `company_name` | Official name of the organisation                |
+    | `industry`     | Sector or industry (e.g. Software, Finance)      |
+    | `website`      | Company website URL                              |
+    | `location`     | Primary office location                          |
+    | `profile_picture` | Company logo (stored under `profile_pictures/`) |
+
+    **What companies can do:**
+
+    - Create new internship listings at `POST /internships/create/`
+    - Edit or delete their own listings at `POST /internships/<id>/edit/` and `POST /internships/<id>/delete/`
+    - Toggle a listing between **active** and **closed** at `POST /internships/<id>/toggle/`
+    - View all applications received across their listings at `GET /applications/company/`
+    - Filter applications by status (`pending`, `accepted`, `rejected`) using the `?status=` query parameter
+    - Accept or reject individual applications at `POST /applications/<id>/<status>/`
+    - Receive in-app notifications when a student applies to one of their listings
+  </Tab>
+</Tabs>
+
+---
+
+## Registration
+
+New users register through a single form that extends Django's built-in `UserCreationForm`. The extra `user_type` field is what separates a student account from a company account — it is a required `ChoiceField` with the two allowed values.
+
+```python
+# users/forms.py
+from django import forms
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.models import User
+
+
+class RegisterForm(UserCreationForm):
+    user_type = forms.ChoiceField(
+        choices=[("student", "Student"), ("company", "Company")],
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    class Meta:
+        model = User
+        fields = ["username", "password1", "password2", "user_type"]
+```
+
+When the form is submitted and validated, the view saves the new `User`, reads `user_type` from `cleaned_data`, sets it on the already-created `Profile`, and immediately logs the user in:
+
+```python
+# users/views.py  —  register()
+if form.is_valid():
+    user = form.save()
+    user_type = form.cleaned_data["user_type"]
+    user.profile.user_type = user_type
+    user.profile.save()
+    login(request, user)
+    return redirect("/users/profile/")
+```
+
+**Registration endpoint:**
+
+```
+POST /users/register/
+```
+
+---
+
+## Profile Auto-Creation
+
+Every time a new `User` is saved to the database for the first time, Django fires a `post_save` signal. The Internship Portal connects a receiver to this signal that automatically creates a blank `Profile` record linked to the new user. This means there is no risk of a user existing without a profile, and no manual step is required.
+
+```python
+# users/signals.py
+from django.db.models.signals import post_save
+from django.contrib.auth.models import User
+from django.dispatch import receiver
+from .models import Profile
+
+
+@receiver(post_save, sender=User)
+def create_profile(sender, instance, created, **kwargs):
+    if created:
+        Profile.objects.create(user=instance)
+```
+
+The `created` guard ensures the receiver only runs on `INSERT`, not on every subsequent `UPDATE` to the `User` record.
+
+---
+
+## Profile Model Fields
+
+The `Profile` model uses a single flat table for both roles. Student-specific and company-specific fields live side by side; whichever set is irrelevant for a given user is simply left blank.
+
+<ParamField path="user" type="OneToOneField → User" required>
+  The Django `auth.User` this profile belongs to. Deleted when the user is deleted (`CASCADE`). Accessible as `user.profile`.
+</ParamField>
+
+<ParamField path="user_type" type="string" required>
+  Role of the account. Must be one of `"student"` or `"company"`. Set during registration via `RegisterForm`.
+</ParamField>
+
+<ParamField path="full_name" type="string">
+  *(Student)* The student's full display name. Max 100 characters.
+</ParamField>
+
+<ParamField path="university" type="string">
+  *(Student)* Name of the student's university or college. Max 100 characters.
+</ParamField>
+
+<ParamField path="degree" type="string">
+  *(Student)* Degree programme or field of study. Max 100 characters.
+</ParamField>
+
+<ParamField path="skills" type="text">
+  *(Student)* Free-text description of the student's technical and soft skills.
+</ParamField>
+
+<ParamField path="bio" type="text">
+  *(Student)* Short personal statement or introduction shown on the public profile page.
+</ParamField>
+
+<ParamField path="company_name" type="string">
+  *(Company)* Official name of the organisation. Max 100 characters.
+</ParamField>
+
+<ParamField path="industry" type="string">
+  *(Company)* Business sector or industry (e.g. Software, Finance, Healthcare). Max 100 characters.
+</ParamField>
+
+<ParamField path="website" type="URL">
+  *(Company)* Full URL of the company's website.
+</ParamField>
+
+<ParamField path="location" type="string">
+  *(Company)* Primary office location (city, country, or remote). Max 100 characters.
+</ParamField>
+
+<ParamField path="cv" type="file">
+  *(Student)* Uploaded CV or résumé file. Stored under `media/cvs/`. Optional — `blank=True, null=True`.
+</ParamField>
+
+<ParamField path="profile_picture" type="image">
+  Uploaded avatar or company logo. Stored under `media/profile_pictures/`. Optional for both roles. Can be removed by posting `remove_picture=1` on the edit-profile form.
+</ParamField>
+
+<Note>
+  Student fields (`full_name`, `university`, `degree`, `skills`, `bio`, `cv`) and company fields (`company_name`, `industry`, `website`, `location`) all live on the **same `Profile` model**. The fields that do not apply to a given role are simply left blank — there is no separate table per role. Filter on `user_type` to determine which set of fields to display or validate.
+</Note>

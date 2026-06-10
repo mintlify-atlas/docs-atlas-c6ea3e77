@@ -1,0 +1,159 @@
+---
+title: "Company Guide: Post Internships and Manage Applicants"
+sidebarTitle: "Company Guide"
+description: "Learn how companies use the portal to post internship listings, manage them, review student applications, and accept or reject candidates."
+---
+
+The Internship Portal gives companies a streamlined workflow to reach student talent: post an opportunity in seconds, receive automatic notifications when students apply, and make accept/reject decisions from a single filtered view. This guide walks through every step — from creating your account to updating the status of an application.
+
+## Getting Started as a Company
+
+Visit `/users/register/` and complete the registration form. When prompted for user type, select **Company**. The portal uses this choice to route you to the company dashboard and unlock company-only features such as internship creation and application review.
+
+After registering, you are redirected to `/users/profile/` where you should complete your company profile straight away. Students and companies both see a **Company** badge (amber) in the navbar so the active role is always visible.
+
+## Your Dashboard
+
+The company dashboard at `/users/dashboard/` is the control centre for all your activity on the portal. It is divided into three distinct areas:
+
+**Action cards** — three quick-access buttons at the top of the page:
+
+<CardGroup cols={3}>
+  <Card title="Create Internship" icon="plus">
+    Post a new internship opportunity at `/internships/create/`. Students will see it immediately after creation.
+  </Card>
+  <Card title="Applications" icon="inbox">
+    Review, accept, or reject applications at `/applications/company/` for all your listings.
+  </Card>
+  <Card title="Company Profile" icon="building">
+    Update your company name, industry, website, and location at `/users/profile/`.
+  </Card>
+</CardGroup>
+
+**Statistics row** — three at-a-glance counters below the action cards show the total number of internships you have created, how many are currently `active`, and how many are `closed`. These numbers update dynamically as you create or toggle listings.
+
+**Your Internships list** — below the stats, every internship associated with your account is displayed as a card showing the title, location, and a coloured status badge (green for Active, grey for Closed). Each card has a **View** button that opens the internship detail page.
+
+## Posting an Internship
+
+<Steps>
+  <Step title="Open the creation form">
+    From the dashboard, click **Create** on the Create Internship card, or navigate directly to `/internships/create/`. You must be logged in as a company to access this page — the view checks `user_type == "company"` and redirects other roles to the home page.
+  </Step>
+  <Step title="Fill in the internship details">
+    The creation form contains three required fields:
+
+    | Field | Description |
+    |-------|-------------|
+    | Title | The name of the role (e.g. *Backend Engineering Intern*) |
+    | Location | Where the internship is based (e.g. *Remote*, *London, UK*) |
+    | Description | A full description of the role, responsibilities, and requirements |
+
+    Submit the form with a `POST` request to `/internships/create/`.
+  </Step>
+  <Step title="Internship goes live immediately">
+    The portal creates the internship record with `status='active'` by default. No manual activation step is needed — students can see and apply to the listing as soon as it is created.
+  </Step>
+  <Step title="Confirm in your listings">
+    After submission, you are redirected to `/internships/` where the new internship appears in your company's listing view. A success banner confirms: *"Internship created successfully!"*
+  </Step>
+</Steps>
+
+## Managing Your Listings
+
+Once an internship exists, you have three management actions available from its detail page.
+
+**Edit an internship**
+
+Navigate to `/internships/<id>/edit/` to update the title, location, or description. Only the company that owns the internship can access this page — the view verifies `internship.company == request.user` before rendering the form. Submit the updated `POST` form to apply the changes. You are redirected to `/internships/` on success.
+
+**Delete an internship**
+
+Send a `POST` request to `/internships/<id>/delete/` to permanently remove the listing. The view verifies ownership before proceeding.
+
+<Warning>
+  Deleting an internship also deletes all associated applications through Django's cascade delete behaviour. Every student who applied to that listing will lose their application record. This action cannot be undone.
+</Warning>
+
+**Toggle listing status**
+
+Send a `POST` request to `/internships/<id>/toggle/` to switch the internship between `active` and `closed`. Closed listings are hidden from student browsing — they do not appear in the filtered student internship list — so toggling to closed is a safe way to pause applications without losing the listing or its data.
+
+```
+active  →  POST /internships/<id>/toggle/  →  closed
+closed  →  POST /internships/<id>/toggle/  →  active
+```
+
+## Reviewing Applications
+
+<Steps>
+  <Step title="Open the applications view">
+    Navigate to `/applications/company/`. This page aggregates every application submitted to any of your internship listings into a single list, making it easy to see all candidates at once without opening each listing individually.
+  </Step>
+  <Step title="Filter by status">
+    Use the `status` query parameter to narrow your review to a specific cohort. The available filter values are:
+
+    | URL | Shows |
+    |-----|-------|
+    | `/applications/company/?status=pending` | Applications awaiting a decision |
+    | `/applications/company/?status=accepted` | Applications you have already accepted |
+    | `/applications/company/?status=rejected` | Applications you have already rejected |
+    | `/applications/company/?status=all` | Every application regardless of status (default) |
+
+    The current filter value is passed to the template as `current_status` so the UI can highlight the active tab.
+  </Step>
+  <Step title="View a student's public profile">
+    Click on a student's name to open their public profile at `/users/profile/<id>/`. The public profile page displays the student's full name, university, degree, bio, skills, and any CV they have uploaded — all the information you need to make an informed decision.
+  </Step>
+  <Step title="Accept or reject the application">
+    Make your decision by sending a `POST` request to the appropriate URL:
+
+    ```
+    POST /applications/<id>/accepted/   →  status set to "accepted"
+    POST /applications/<id>/rejected/   →  status set to "rejected"
+    ```
+
+    The view validates that the application belongs to one of your internships before updating the record. Only `accepted` and `rejected` are valid status strings — any other value is ignored.
+  </Step>
+  <Step title="Student receives a notification">
+    Immediately after the status update, the portal creates a `Notification` record for the student with the message:
+
+    ```
+    Your application for [Internship Title] was accepted
+    Your application for [Internship Title] was rejected
+    ```
+
+    The student will see the notification count update in their navbar bell the next time they load a page. No manual communication is required on your part.
+  </Step>
+</Steps>
+
+## Notifications
+
+Every time a student submits an application to one of your internships, the portal creates a notification for your account with the message:
+
+```
+New application received for [Internship Title]
+```
+
+The unread count is displayed in the 🔔 bell icon in the top navigation bar. Click the bell to drop down the list of recent notifications. Clicking the bell also fires a background `POST` to `/applications/notifications/read/` that marks all unread items as read and resets the counter to **0** in the UI immediately — no page refresh needed.
+
+<Note>
+  Notifications are a real-time signal, not an email digest. Check the portal regularly or act on the bell counter to ensure candidates are not left waiting for a response.
+</Note>
+
+## Company Profile
+
+Keep your company profile up to date so students have accurate context when browsing your listings. Navigate to `/users/profile/edit/` to update the following fields:
+
+| Field | Description |
+|-------|-------------|
+| Company Name | Your organisation's official name |
+| Industry | The sector you operate in (e.g. *Technology*, *Finance*) |
+| Website | Your public website URL |
+| Location | Your headquarters or primary office location |
+
+You can also upload a **profile picture** (your company logo) and remove it using the Remove Picture checkbox. Changes are saved when you submit the form, and you are redirected to `/users/profile/` with a confirmation message.
+
+<Tip>
+  Use the status filter on `/applications/company/?status=pending` to focus your review session exclusively on candidates who are still waiting for a response. Processing pending applications promptly improves the experience for students and keeps your pipeline moving.
+</Tip>

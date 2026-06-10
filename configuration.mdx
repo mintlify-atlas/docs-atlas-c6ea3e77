@@ -1,0 +1,143 @@
+---
+title: "Configure Internship Portal for Your Environment"
+sidebarTitle: "Configuration"
+description: "Understand every key Django setting in config/settings.py — secret key, debug mode, allowed hosts, database, media files, and installed apps."
+---
+
+All runtime configuration for Internship Portal lives in a single file: `config/settings.py`. During local development the defaults work out of the box, but before you deploy to any public-facing environment you must update several of these values to harden security, point to the correct database, and serve files correctly. This page walks through each important setting, explains what it controls, and shows you exactly what to change.
+
+<Warning>
+  Never run Internship Portal in production with `DEBUG = True` or with the default `SECRET_KEY` that ships in the repository. Both settings are intentionally insecure placeholders suitable only for local development. Leaving either of them unchanged on a public server exposes your users and your data.
+</Warning>
+
+## Secret Key
+
+Django uses `SECRET_KEY` to cryptographically sign cookies, sessions, CSRF tokens, and other security-sensitive data. The value committed to the repository is a known-insecure placeholder:
+
+```python
+# config/settings.py
+SECRET_KEY = "django-insecure-vs@u76qf@^x=g#idlcwphyhy41q#2!%k127uy0thml=d6ksojs"
+```
+
+Generate a fresh, random key before deploying:
+
+```bash
+python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+```
+
+Store the result as an environment variable so it never appears in source control, then read it in `settings.py`:
+
+```python
+import os
+
+SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+```
+
+Set the variable in your shell, CI environment, or hosting platform's secrets manager before starting the server.
+
+## Debug Mode
+
+`DEBUG = True` enables Django's interactive error pages, which display full stack traces, local variable values, and configuration details directly in the browser. This is invaluable during development but a critical security risk in production.
+
+```python
+# Development
+DEBUG = True
+
+# Production — set to False
+DEBUG = False
+```
+
+When `DEBUG` is `False`, Django stops serving detailed error pages and falls back to your configured `404` and `500` handlers. You must also configure `ALLOWED_HOSTS` (see below) before the server will accept requests with debug mode off.
+
+## Allowed Hosts
+
+`ALLOWED_HOSTS` is a list of hostnames that Django will accept in the `Host` HTTP header. With `DEBUG = True` the list is ignored; with `DEBUG = False` any request whose host is not in the list is rejected with a `400 Bad Request`.
+
+```python
+# Default (development only — do not use in production)
+ALLOWED_HOSTS = []
+
+# Production example
+ALLOWED_HOSTS = ["yourdomain.com", "www.yourdomain.com"]
+```
+
+Add every domain or subdomain — including any IP addresses — that your server will respond to. If you are running behind a reverse proxy, also include the proxy's internal address if it forwards requests using the bare IP.
+
+## Database
+
+By default Internship Portal uses SQLite, which requires no installation and stores the entire database in a single file at the project root:
+
+```python
+# config/settings.py
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
+    }
+}
+```
+
+SQLite is sufficient for development and low-traffic deployments, but for production you should switch to PostgreSQL. Install `psycopg2` (`pip install psycopg2-binary`) and update the `DATABASES` block:
+
+```python
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ["DB_NAME"],
+        "USER": os.environ["DB_USER"],
+        "PASSWORD": os.environ["DB_PASSWORD"],
+        "HOST": os.environ.get("DB_HOST", "localhost"),
+        "PORT": os.environ.get("DB_PORT", "5432"),
+    }
+}
+```
+
+After switching engines, run `python manage.py migrate` against the new database to recreate the schema.
+
+## Media Files
+
+The `MEDIA_URL` and `MEDIA_ROOT` settings control where Django stores and serves user-uploaded files. Internship Portal uploads two types of files: CV documents (PDFs or other files uploaded by students) and profile pictures (images for both user types).
+
+```python
+# config/settings.py
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+```
+
+During development, Django's development server serves media files automatically via the route added at the bottom of `config/urls.py`:
+
+```python
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+```
+
+In production, Django does **not** serve media files itself. You should configure your web server (nginx, Apache) or a CDN (AWS S3, Cloudflare R2) to serve the contents of `MEDIA_ROOT` at the path defined by `MEDIA_URL`. Remove or guard the `static()` route addition so it only runs when `DEBUG = True`.
+
+## Installed Apps
+
+Beyond Django's built-in contrib apps, Internship Portal registers three custom applications in `INSTALLED_APPS`:
+
+```python
+INSTALLED_APPS = [
+    # Django built-ins
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    # Custom apps
+    "internships",
+    "applications",
+    "users.apps.UsersConfig",
+]
+```
+
+Each custom app owns a distinct slice of the domain:
+
+| App | Responsibility |
+|---|---|
+| `users.apps.UsersConfig` | User registration, login/logout, `Profile` model (student and company fields, CV upload, profile picture), and the `notifications` context processor that injects unread notification counts into every template. |
+| `internships` | `Internship` model with title, company (FK to `User`), location, description, and active/closed status. Provides views for listing, detail, creation, and status toggling. |
+| `applications` | `Application` model (student → internship with pending/accepted/rejected status) and `Notification` model. Handles submission, duplicate prevention via `unique_together`, and status updates that trigger notifications. |
+
+`users` is registered using its `AppConfig` class (`users.apps.UsersConfig`) so that Django correctly discovers its `signals.py` file, which is responsible for automatically creating a `Profile` record whenever a new `User` is saved.

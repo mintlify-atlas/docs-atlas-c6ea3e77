@@ -1,0 +1,80 @@
+{
+  "projectType": "saas",
+  "projectName": "Internship Portal",
+  "projectDescription": "A Django web application that connects students seeking internships with companies posting opportunities, featuring role-based dashboards, application management, and real-time notifications.",
+  "theme": "almond",
+  "primaryColor": "#3B6FE0",
+  "lightColor": "#EEF3FD",
+  "darkColor": "#1A3A7C",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "configuration"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/user-roles",
+              "features/internships",
+              "features/applications",
+              "features/notifications"
+            ]
+          },
+          {
+            "group": "User Guides",
+            "pages": [
+              "guides/student-guide",
+              "guides/company-guide"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/project-structure",
+              "development/data-models",
+              "development/extending"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Role-based accounts: Student and Company user types with distinct dashboards",
+    "Internship management: Companies can create, edit, delete, and toggle active/closed status",
+    "Application workflow: Students apply to internships; companies accept or reject applications",
+    "Real-time notifications: In-app bell notifications for new applications and status changes",
+    "Profile management: Students upload CVs and profile pictures; companies provide business details",
+    "Public student profiles: Companies can view student profiles when reviewing applications",
+    "Auto-created profiles via Django signals on user registration",
+    "Duplicate prevention: Unique constraint ensures a student can apply to each internship once"
+  ],
+  "publicApiSurface": [
+    "GET /internships/ — list active internships (role-aware: student/company/guest)",
+    "GET /internships/<id>/ — internship detail with apply status check",
+    "POST /internships/create/ — create a new internship (company only)",
+    "POST /internships/<id>/edit/ — update internship details (owner only)",
+    "POST /internships/<id>/delete/ — delete an internship (owner only)",
+    "POST /internships/<id>/toggle/ — toggle internship active/closed status",
+    "POST /applications/apply/<internship_id>/ — submit an application (student only)",
+    "GET /applications/my/ — list student's own applications",
+    "GET /applications/company/ — list company's received applications (filterable by status)",
+    "POST /applications/<id>/<status>/ — accept or reject an application (company only)",
+    "POST /applications/notifications/read/ — mark all notifications as read",
+    "GET/POST /users/register/ — register as student or company",
+    "GET/POST /users/login/ — authenticate user",
+    "GET /users/logout/ — log out",
+    "GET /users/profile/ — view own profile",
+    "POST /users/profile/edit/ — edit profile fields, CV, and profile picture",
+    "GET /users/profile/<user_id>/ — view public student profile",
+    "GET /users/dashboard/ — role-specific dashboard"
+  ]
+}

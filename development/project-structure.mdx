@@ -1,0 +1,206 @@
+---
+title: "Project Structure: Django Apps, Templates, and Config"
+sidebarTitle: "Project Structure"
+description: "Explore Internship Portal's three-app Django architecture — users, internships, and applications — plus the config package and how they interconnect."
+---
+
+Internship Portal is organized as a standard Django project composed of three focused application modules — `users`, `internships`, and `applications` — alongside the `config` project package that ties everything together. Each app owns its own models, views, URLs, and templates, keeping concerns cleanly separated and making the codebase straightforward to navigate and extend.
+
+## Directory Layout
+
+The top-level directory tree reflects Django's per-app convention. Every app lives at the project root alongside `config/` and the shared `templates/` folder.
+
+```bash
+internship-portal-django/
+├── applications/
+│   ├── admin.py
+│   ├── apps.py
+│   ├── migrations/
+│   ├── models.py          # Application, Notification
+│   ├── templates/
+│   │   └── applications/
+│   │       ├── company_applications.html
+│   │       └── my_applications.html
+│   ├── urls.py
+│   └── views.py
+├── config/
+│   ├── asgi.py
+│   ├── settings.py
+│   ├── urls.py
+│   └── wsgi.py
+├── internships/
+│   ├── admin.py
+│   ├── apps.py
+│   ├── migrations/
+│   ├── models.py          # Internship
+│   ├── services.py        # Service layer functions
+│   ├── templates/
+│   │   └── internships/
+│   │       ├── create.html
+│   │       ├── detail.html
+│   │       ├── edit.html
+│   │       └── list.html
+│   ├── urls.py
+│   └── views.py
+├── templates/
+│   └── base.html
+├── users/
+│   ├── admin.py
+│   ├── apps.py
+│   ├── context_processors.py
+│   ├── forms.py
+│   ├── migrations/
+│   ├── models.py          # Profile
+│   ├── signals.py
+│   ├── templates/
+│   │   └── users/
+│   │       ├── dashboard_company.html
+│   │       ├── dashboard_student.html
+│   │       ├── edit_profile.html
+│   │       └── login.html
+│   └── views.py
+└── manage.py
+```
+
+## App Responsibilities
+
+Each Django app has a well-defined domain. The table below summarizes what each one owns.
+
+<CardGroup cols={2}>
+  <Card title="users" icon="user">
+    Custom `Profile` model (extending Django's built-in `User`), registration, login/logout, profile editing, student and company dashboards, a `post_save` signal that auto-creates profiles, and a context processor that injects unread notification counts into every template.
+  </Card>
+  <Card title="internships" icon="briefcase">
+    The `Internship` model along with full CRUD views (create, list, detail, edit, delete). Business logic is lifted out of views into `services.py`, keeping views thin and logic independently testable.
+  </Card>
+  <Card title="applications" icon="file-lines">
+    The `Application` and `Notification` models. Views handle apply, review (company-side listing with status filter), status update (accept/reject), and marking notifications as read. A `unique_together` constraint prevents duplicate applications.
+  </Card>
+  <Card title="config" icon="gear">
+    The Django project package. Contains `settings.py`, the root `urls.py`, `wsgi.py`, and `asgi.py`. All global configuration — installed apps, middleware, template directories, database, media files — lives here.
+  </Card>
+</CardGroup>
+
+## URL Routing
+
+The root URL configuration in `config/urls.py` acts as a dispatcher, delegating each URL prefix to the corresponding app's own `urls.py` via Django's `include()`.
+
+```python
+from django.contrib import admin
+from django.http import HttpResponse
+from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
+
+urlpatterns = [
+    path("admin/", admin.site.urls),
+    path("", lambda request: HttpResponse("Welcome to Internship Portal")),
+    path("users/", include("users.urls")),
+    path("internships/", include("internships.urls")),
+    path("applications/", include("applications.urls")),
+]
+
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+```
+
+- `users/` — all authentication and profile routes (register, login, logout, dashboard, edit profile)
+- `internships/` — listing, detail, create, edit, delete, and toggle-status routes
+- `applications/` — apply, my-applications, company applications, update status, and mark-notifications-read routes
+
+The final `static()` call appends a URL pattern that serves uploaded media files (CVs, profile pictures) from `MEDIA_ROOT` during development.
+
+## Templates
+
+Templates follow Django's per-app convention: each app stores its own HTML files under `app/templates/app/`. This double-nesting prevents name collisions when Django's template loader searches all installed apps.
+
+```
+users/templates/users/dashboard_student.html
+internships/templates/internships/list.html
+applications/templates/applications/my_applications.html
+```
+
+A global `base.html` lives at the top-level `templates/` directory — the path is registered in `settings.py` via `"DIRS": [BASE_DIR / "templates"]`. Every app template extends this base, ensuring a consistent layout and shared navigation across all pages.
+
+## Service Layer
+
+The `internships/services.py` module contains pure business logic functions that are entirely separate from Django's request/response cycle. Views import and call these functions rather than constructing ORM queries inline, which keeps views lean and makes the business logic straightforward to unit test.
+
+```python
+from .models import Internship
+
+
+def get_student_internships():
+    return Internship.objects.filter(status="active")
+
+
+def get_company_internships(user):
+    return Internship.objects.filter(company=user)
+
+
+def get_public_internships():
+    return Internship.objects.filter(status="active")
+
+
+def create_internship(user, title, location, description):
+    return Internship.objects.create(
+        title=title, location=location, description=description, company=user
+    )
+
+
+def update_internship(internship, title, location, description):
+    internship.title = title
+    internship.location = location
+    internship.description = description
+    internship.save()
+    return internship
+
+
+def remove_internship(internship):
+    internship.delete()
+
+
+def toggle_internship_status(internship):
+    if internship.status == "active":
+        internship.status = "closed"
+    else:
+        internship.status = "active"
+    internship.save()
+    return internship
+```
+
+The seven service functions cover the full lifecycle of an internship listing: querying active listings for students or the public, fetching a company's own listings, creating, updating, deleting, and toggling status between `active` and `closed`.
+
+<Note>
+  The service layer functions in `internships/services.py` are thin wrappers over ORM queries, making them easy to unit test independently of Django's request/response cycle. You can call them directly in a test without setting up a full HTTP request or response object.
+</Note>
+
+## Signals
+
+`users/signals.py` uses Django's `post_save` signal to automatically create a `Profile` record whenever a new `User` is saved. This ensures every user always has a corresponding profile without requiring any manual step in the registration flow.
+
+```python
+from django.db.models.signals import post_save
+from django.contrib.auth.models import User
+from django.dispatch import receiver
+from .models import Profile
+
+
+@receiver(post_save, sender=User)
+def create_profile(sender, instance, created, **kwargs):
+    if created:
+        Profile.objects.create(user=instance)
+```
+
+The signal is wired up in `users/apps.py` via the `ready()` hook, which imports `users.signals` after the app registry has fully loaded — the standard Django pattern for connecting signals without triggering premature imports.
+
+```python
+from django.apps import AppConfig
+
+
+class UsersConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "users"
+
+    def ready(self):
+        import users.signals
+```

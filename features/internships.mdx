@@ -1,0 +1,181 @@
+---
+title: "Internship Listings: Create, Manage, and Browse Openings"
+sidebarTitle: "Internships"
+description: "Discover how internship listings are created, edited, toggled between active and closed, and displayed differently based on the viewer's role."
+---
+
+The internship listing system is the core of the portal. Companies create and manage listings, students browse and apply to them, and unauthenticated visitors can still view active openings. Every listing carries a **status** — `active` or `closed` — that controls visibility for non-company viewers. The service layer cleanly separates query logic from view logic, making each behaviour easy to understand and test independently.
+
+---
+
+## Internship Model
+
+Each internship is stored as a single `Internship` record. The `company` field is a foreign key to Django's built-in `User` model, meaning the owning company is always a registered user with `user_type = "company"`.
+
+<ParamField path="id" type="integer">
+  Auto-incrementing primary key assigned by the database on creation.
+</ParamField>
+
+<ParamField path="title" type="string" required>
+  Job title or name of the internship position. Max 200 characters.
+</ParamField>
+
+<ParamField path="company" type="ForeignKey → User" required>
+  The company user who owns this listing. Deleting the user cascades and removes all their listings. Accessible in reverse as `user.internships.all()`.
+</ParamField>
+
+<ParamField path="location" type="string" required>
+  Physical location or "Remote". Max 100 characters.
+</ParamField>
+
+<ParamField path="description" type="text" required>
+  Full description of the role, responsibilities, and requirements. Rendered as-is in the detail template.
+</ParamField>
+
+<ParamField path="status" type="string" default="active">
+  Visibility status. One of `"active"` or `"closed"`. Defaults to `"active"` on creation. Toggle between the two values via the toggle endpoint.
+</ParamField>
+
+<ParamField path="created_at" type="datetime">
+  Timestamp set automatically when the record is first saved (`auto_now_add=True`). Read-only after creation.
+</ParamField>
+
+---
+
+## URL Routes
+
+All internship routes are mounted under the `/internships/` prefix in the main URL configuration.
+
+| Method | Path | View | Description |
+|--------|------|------|-------------|
+| `GET` | `/internships/` | `internship_list` | Role-aware listing page |
+| `GET` | `/internships/<id>/` | `internship_detail` | Full detail for one listing |
+| `GET / POST` | `/internships/create/` | `create_internship` | Create a new listing (company only) |
+| `GET / POST` | `/internships/<id>/edit/` | `edit_internship` | Edit an existing listing (owner only) |
+| `POST` | `/internships/<id>/delete/` | `delete_internship` | Permanently delete a listing (owner only) |
+| `POST` | `/internships/<id>/toggle/` | `toggle_status` | Flip status between active and closed (owner only) |
+
+```python
+# internships/urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path("", views.internship_list, name="internship_list"),
+    path("<int:internship_id>/", views.internship_detail, name="internship_detail"),
+    path("create/", views.create_internship, name="create_internship"),
+    path("<int:internship_id>/edit/", views.edit_internship, name="edit_internship"),
+    path("<int:internship_id>/delete/", views.delete_internship, name="delete_internship"),
+    path("<int:internship_id>/toggle/", views.toggle_status, name="toggle_status"),
+]
+```
+
+---
+
+## Role-Aware Listing
+
+The `internship_list` view at `GET /internships/` returns a different queryset depending on who is viewing the page. The decision logic lives in the view and delegates the actual database query to the service layer:
+
+```python
+# internships/views.py  —  internship_list()
+def internship_list(request):
+    if request.user.is_authenticated and hasattr(request.user, "profile"):
+        role = request.user.profile.user_type
+
+        if role == "student":
+            internships = get_student_internships()
+        elif role == "company":
+            internships = get_company_internships(request.user)
+        else:
+            internships = get_public_internships()
+    else:
+        internships = get_public_internships()
+
+    return render(request, "internships/list.html", {"internships": internships})
+```
+
+The three service functions that back this view are:
+
+```python
+# internships/services.py
+def get_student_internships():
+    # Students see only active listings from all companies
+    return Internship.objects.filter(status="active")
+
+
+def get_company_internships(user):
+    # Companies see all their own listings regardless of status
+    return Internship.objects.filter(company=user)
+
+
+def get_public_internships():
+    # Unauthenticated visitors see only active listings
+    return Internship.objects.filter(status="active")
+```
+
+In summary:
+
+- **Students** → all active listings across every company
+- **Companies** → all of their own listings (active *and* closed)
+- **Guests / unauthenticated** → all active listings (same as students)
+
+---
+
+## Status Toggle
+
+A company can flip a listing between `active` and `closed` at any time without editing the listing's content. The toggle is handled by `toggle_internship_status()` in the service layer, which reads the current status and sets the opposite value before saving:
+
+```python
+# internships/services.py
+def toggle_internship_status(internship):
+    if internship.status == "active":
+        internship.status = "closed"
+    else:
+        internship.status = "active"
+    internship.save()
+    return internship
+```
+
+The corresponding view validates ownership before calling the service:
+
+```python
+# internships/views.py  —  toggle_status()
+@login_required
+def toggle_status(request, internship_id):
+    internship = get_object_or_404(Internship, id=internship_id)
+
+    if internship.company != request.user:
+        return redirect("/")
+
+    toggle_internship_status(internship)
+    messages.success(request, "Internship status updated successfully!")
+    return redirect("/internships/")
+```
+
+---
+
+## Access Control
+
+The portal enforces two layers of access control on mutating routes:
+
+1. **Authentication** — `create`, `edit`, `delete`, and `toggle` views are all decorated with `@login_required`. Unauthenticated requests are redirected to the login page.
+2. **Ownership** — `edit`, `delete`, and `toggle` views verify that `internship.company == request.user`. If the logged-in user does not own the listing, they are silently redirected to the home page.
+
+Additionally, `create_internship` checks `user_type` before rendering the form:
+
+```python
+# internships/views.py  —  create_internship()
+@login_required
+def create_internship(request):
+    if not hasattr(request.user, "profile"):
+        return redirect("/")
+    if request.user.profile.user_type != "company":
+        return redirect("/")
+    # ... handle POST / render form
+```
+
+This means students who navigate directly to `/internships/create/` are redirected away without seeing the form.
+
+<Tip>
+  Companies can reopen closed internships at any time using the toggle endpoint (`POST /internships/<id>/toggle/`). There is no time limit or approval process — toggling back to `active` immediately makes the listing visible to students and guests again.
+</Tip>

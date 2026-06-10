@@ -1,0 +1,182 @@
+---
+title: "In-App Notifications for Applications and Status Updates"
+sidebarTitle: "Notifications"
+description: "Learn how the portal creates, displays, and clears in-app notifications when students apply and when companies accept or reject applications."
+---
+
+The Internship Portal includes a lightweight in-app notification system that keeps both students and companies informed in real time — without email or external services. Notifications are created automatically at two key points in the application workflow, injected into every page via a Django context processor, and displayed as an unread-count badge in the navbar. Marking them as read happens through an AJAX call so the page never needs to reload.
+
+---
+
+## Notification Model
+
+Each notification is a single row in the database, linked to the user it is intended for. The `is_read` flag controls whether the notification is still counted as unread and shown in the bell badge.
+
+<ParamField path="id" type="integer">
+  Auto-incrementing primary key.
+</ParamField>
+
+<ParamField path="user" type="ForeignKey → User" required>
+  The user this notification is addressed to. Accessible in reverse as `user.notifications.all()`. Deleting the user cascades and removes all their notifications.
+</ParamField>
+
+<ParamField path="message" type="string" required>
+  Human-readable notification text. Max 255 characters. Generated automatically by the application views — never set manually by end users.
+</ParamField>
+
+<ParamField path="is_read" type="boolean" default="false">
+  Whether the user has seen this notification. Defaults to `False` on creation. Set to `True` in bulk when the user clicks the bell icon (via `POST /applications/notifications/read/`). Records are **not** deleted when read.
+</ParamField>
+
+<ParamField path="created_at" type="datetime">
+  Timestamp set automatically when the notification is created (`auto_now_add=True`). Used to order notifications newest-first in the context processor.
+</ParamField>
+
+```python
+# applications/models.py
+class Notification(models.Model):
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="notifications"
+    )
+    message = models.CharField(max_length=255)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+```
+
+---
+
+## When Notifications Are Created
+
+Notifications are generated at exactly two points in the application lifecycle, both inside `applications/views.py`:
+
+**1. Student submits an application → company is notified**
+
+When `apply_internship` creates a new `Application` record, it immediately creates a notification for the company that owns the listing:
+
+```python
+# applications/views.py  —  apply_internship()
+if created:
+    Notification.objects.create(
+        user=internship.company,
+        message=f"New application received for {internship.title}",
+    )
+```
+
+Example message: `"New application received for Backend Engineer Intern"`
+
+**2. Company accepts or rejects → student is notified**
+
+When `update_application` changes the status to `accepted` or `rejected`, it creates a notification for the student who applied:
+
+```python
+# applications/views.py  —  update_application()
+if status in ["accepted", "rejected"]:
+    application.status = status
+    application.save()
+
+    Notification.objects.create(
+        user=application.student,
+        message=f"Your application for {application.internship.title} was {status}",
+    )
+```
+
+Example messages:
+- `"Your application for Backend Engineer Intern was accepted"`
+- `"Your application for Backend Engineer Intern was rejected"`
+
+---
+
+## Context Processor
+
+Rather than querying for unread notifications in every view individually, the portal uses a Django **context processor** defined in `users/context_processors.py`. This function is called on every request and injects two variables — `notifications` and `notifications_count` — directly into the template context, making them available in every template including the base layout.
+
+```python
+# users/context_processors.py
+from applications.models import Notification
+
+
+def notifications(request):
+    if request.user.is_authenticated:
+        unread = Notification.objects.filter(
+            user=request.user, is_read=False
+        ).order_by("-created_at")
+
+        return {"notifications": unread, "notifications_count": unread.count()}
+
+    return {"notifications": [], "notifications_count": 0}
+```
+
+The processor returns an empty list and a zero count for unauthenticated visitors, so templates do not need to guard against missing context variables.
+
+To activate the context processor it must be listed in the `TEMPLATES` → `OPTIONS` → `context_processors` setting in `settings.py`:
+
+```python
+# settings.py  (excerpt)
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "OPTIONS": {
+            "context_processors": [
+                # ... Django built-ins ...
+                "users.context_processors.notifications",
+            ],
+        },
+    }
+]
+```
+
+---
+
+## Displaying Notifications
+
+Unread notifications appear in a dropdown **bell button** rendered in the site-wide navbar (inside `base.html`). The bell button shows a badge with the current unread count sourced from the `notifications_count` context variable. The dropdown list renders each notification's `message` field, ordered newest-first because the context processor queries with `.order_by("-created_at")`.
+
+The template logic looks roughly like this:
+
+```html
+<!-- templates/base.html  (excerpt) -->
+{% if notifications_count > 0 %}
+  <button id="notif-btn">🔔 {{ notifications_count }}</button>
+  <ul>
+    {% for notif in notifications %}
+      <li>{{ notif.message }}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <span>🔔 0</span>
+{% endif %}
+```
+
+---
+
+## Marking as Read
+
+When the user clicks the bell button, a JavaScript `fetch` call posts to `POST /applications/notifications/read/`. The view marks every unread notification for the current user as read in a single bulk `update`, then the JavaScript immediately resets the badge to zero — all without a page reload.
+
+**View:**
+
+```python
+# applications/views.py  —  mark_notifications_read()
+@login_required
+def mark_notifications_read(request):
+    Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+    return redirect(request.META.get("HTTP_REFERER", "/"))
+```
+
+**JavaScript (in `base.html`):**
+
+```javascript
+btn.addEventListener('click', function () {
+  fetch('/applications/notifications/read/', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+  });
+  btn.innerHTML = '🔔 0';
+});
+```
+
+The CSRF token is rendered server-side via the Django template tag and embedded directly into the `fetch` headers, so the request passes Django's CSRF middleware without a full page form submission.
+
+<Note>
+  Notifications are **soft-cleared**, not deleted. Marking notifications as read sets `is_read=True` on each record — the rows remain in the database permanently. This means the full notification history is preserved for auditing or future features (such as a "notification history" page), even though cleared notifications no longer appear in the bell badge.
+</Note>

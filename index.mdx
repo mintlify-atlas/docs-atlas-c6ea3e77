@@ -1,20 +1,59 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "Internship Portal: Connect Students with Opportunities"
+sidebarTitle: "Home"
+description: "Internship Portal is a Django web app that connects students seeking internships with companies posting opportunities. Role-based dashboards, applications, and notifications included."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+Internship Portal is an open-source Django application that bridges the gap between students looking for internships and companies looking for talent. It provides two distinct user experiences — a student-facing interface for discovering and applying to opportunities, and a company-facing interface for posting positions and managing applicants.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Set up and run Internship Portal locally in under five minutes.
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Learn about Django settings, database configuration, and media files.
+  </Card>
+  <Card title="Student Guide" icon="graduation-cap" href="/guides/student-guide">
+    Browse internships, apply, track your applications, and manage your profile.
+  </Card>
+  <Card title="Company Guide" icon="building" href="/guides/company-guide">
+    Post internship listings, review applicants, and manage your pipeline.
+  </Card>
+</CardGroup>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## What's included
+
+Internship Portal ships as a fully self-contained Django project with three apps — `users`, `internships`, and `applications` — each with their own models, views, and templates.
+
+<CardGroup cols={2}>
+  <Card title="User Roles" icon="users" href="/features/user-roles">
+    Students and companies each get a tailored registration flow and dashboard.
+  </Card>
+  <Card title="Internship Management" icon="briefcase" href="/features/internships">
+    Companies create, edit, and toggle internship listings. Students browse and apply.
+  </Card>
+  <Card title="Application Workflow" icon="file-check" href="/features/applications">
+    Full lifecycle from submission to acceptance or rejection, with status tracking.
+  </Card>
+  <Card title="Notifications" icon="bell" href="/features/notifications">
+    In-app bell notifications keep both sides informed of key events.
+  </Card>
+</CardGroup>
+
+## Get running in three steps
+
+<Steps>
+  <Step title="Clone and install dependencies">
+    Clone the repository and create a Python virtual environment with Django installed.
+  </Step>
+  <Step title="Run migrations and start the server">
+    Apply database migrations with `manage.py migrate`, then start the dev server with `manage.py runserver`.
+  </Step>
+  <Step title="Register and explore">
+    Navigate to `/users/register/` to create a Student or Company account and explore the portal.
+  </Step>
+</Steps>
+
+<Note>
+  Internship Portal uses SQLite by default, so no database server setup is required for local development.
+</Note>

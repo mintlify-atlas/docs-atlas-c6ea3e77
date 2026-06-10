@@ -1,47 +1,107 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Internship Portal"
+sidebarTitle: "Quickstart"
+description: "Clone the repo, install dependencies, run migrations, and have a working local Internship Portal instance running in under five minutes."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+By the end of this guide you will have a fully functional Internship Portal running on your local machine, a superuser account for the Django admin, and at least one registered user — either a Student or a Company — so you can explore every feature the portal offers. The setup requires only Python, pip, and git; no Docker or external database is needed.
 
 ## Prerequisites
 
-Before you begin, you must have:
+Before you begin, make sure the following tools are available in your terminal:
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+- **Python 3.10 or later** — verify with `python --version`
+- **pip** — bundled with Python 3.10+; verify with `pip --version`
+- **git** — verify with `git --version`
 
-## Get started
+## Setup Steps
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Clone the Repository">
+    Download the source code and move into the project directory:
 
     ```bash
-    npm install your-package
+    git clone https://github.com/unesexact/internship-portal-django.git
+    cd internship-portal-django
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+
+  <Step title="Create and Activate a Virtual Environment">
+    A virtual environment keeps the project's dependencies isolated from your system Python installation. Create one and activate it:
+
+    <CodeGroup>
+      ```bash macOS / Linux
+      python -m venv venv
+      source venv/bin/activate
+      ```
+
+      ```bash Windows
+      python -m venv venv
+      venv\Scripts\activate
+      ```
+    </CodeGroup>
+
+    Once activated, your terminal prompt will be prefixed with `(venv)`.
+  </Step>
+
+  <Step title="Install Dependencies">
+    The portal requires Django and Pillow. Pillow is needed because the `Profile` model uses Django's `ImageField` to handle profile picture uploads:
 
     ```bash
-    your-cli init
+    pip install django Pillow
     ```
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+
+  <Step title="Apply Database Migrations">
+    Django ships with a built-in migration system. Run `migrate` to create all tables — including the three custom apps (`users`, `internships`, `applications`) — in the local SQLite database:
 
     ```bash
-    your-cli start
+    python manage.py migrate
     ```
+
+    You should see output confirming that each migration has been applied. A `db.sqlite3` file will appear in the project root.
+  </Step>
+
+  <Step title="Create a Superuser (Recommended)">
+    Creating a superuser account gives you access to the Django admin panel at `/admin/`, where you can inspect and manage every model directly:
+
+    ```bash
+    python manage.py createsuperuser
+    ```
+
+    Follow the prompts to set a username, email address, and password. This step is optional but highly recommended while exploring the application.
+  </Step>
+
+  <Step title="Start the Development Server">
+    Launch Django's built-in development server on the default port `8000`:
+
+    ```bash
+    python manage.py runserver
+    ```
+
+    The terminal will confirm the server is running:
+
+    ```
+    Starting development server at http://127.0.0.1:8000/
+    Quit the server with CONTROL-C.
+    ```
+  </Step>
+
+  <Step title="Register Your First User">
+    Open your browser and navigate to the registration page:
+
+    ```
+    http://127.0.0.1:8000/users/register/
+    ```
+
+    Fill in the form and choose either **Student** or **Company** as your account type. Registering as a Company lets you post internship listings; registering as a Student lets you browse listings and submit applications. Repeat the process in a separate browser session (or an incognito window) to create one of each role for a complete end-to-end test.
   </Step>
 </Steps>
 
 <Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+  Log in with your superuser credentials and visit `http://127.0.0.1:8000/admin/` to access the Django admin panel. From there you can inspect all `Profile`, `Internship`, `Application`, and `Notification` records, manually adjust statuses, and verify that migrations ran correctly — all without writing a single line of code.
 </Tip>
+
+<Warning>
+  The `SECRET_KEY` baked into `config/settings.py` is a publicly known insecure value — it begins with `django-insecure-`. **Never deploy the application to a public server using this key.** See the [Configuration](/configuration) guide for instructions on generating and safely storing a strong secret key before going to production.
+</Warning>
