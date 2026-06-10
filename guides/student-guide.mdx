@@ -1,5 +1,5 @@
 ---
-title: "Student Guide: Find and Apply for Internships"
+title: "Student Guide: Browse Listings, Apply, and Track Status"
 sidebarTitle: "Student Guide"
 description: "Learn how to register as a student, browse internship listings, submit applications, track their status, and manage your profile and CV."
 ---
@@ -53,7 +53,7 @@ All active internships posted by companies on the platform are visible to studen
 
 Submitting an application is intentionally frictionless — there is no separate application form to fill in. Your profile information is already on file, and companies can access it directly.
 
-When you click **Apply** on the detail page, the browser sends a `POST` request to `/applications/apply/<id>/`. The portal then:
+When you click **Apply** on the detail page, the browser sends a `POST` request to `/applications/apply/<internship_id>/`. The portal then:
 
 1. Creates an `Application` record linking your account to the internship.
 2. Displays a success banner: *"Application submitted successfully!"*
@@ -93,7 +93,7 @@ Your profile is visible to companies when they review your application, so keepi
     Go to `/users/profile/` via the **Profile** button in the top navigation bar or the **My Profile** card on your dashboard. The page shows your current information exactly as a company would see it.
   </Step>
   <Step title="Enter edit mode">
-    Click the **Edit Profile** button to navigate to `/users/profile/edit/`. All fields become editable.
+    Click the **Edit Profile** button to navigate to `/users/edit-profile/`. All fields become editable.
   </Step>
   <Step title="Update your personal details">
     Fill in or update the following student-specific fields:
@@ -131,5 +131,5 @@ Your application for [Internship Title] was rejected
 Clicking the bell also marks all unread notifications as read via a background `POST` to `/applications/notifications/read/`, and the counter resets to **0** immediately in the UI — no page reload required.
 
 <Tip>
-  Keep your profile complete — companies can view your public profile at `/users/profile/<id>/` when reviewing your application. A filled-in bio, a visible skills list, and an uploaded CV significantly increase the information a company has to make their decision.
+  Keep your profile complete — companies can view your public profile at `/users/profile/<user_id>/` when reviewing your application. A filled-in bio, a visible skills list, and an uploaded CV significantly increase the information a company has to make their decision.
 </Tip>

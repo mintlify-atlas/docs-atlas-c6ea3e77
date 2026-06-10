@@ -10,7 +10,7 @@ The Internship Portal gives companies a streamlined workflow to reach student ta
 
 Visit `/users/register/` and complete the registration form. When prompted for user type, select **Company**. The portal uses this choice to route you to the company dashboard and unlock company-only features such as internship creation and application review.
 
-After registering, you are redirected to `/users/profile/` where you should complete your company profile straight away. Students and companies both see a **Company** badge (amber) in the navbar so the active role is always visible.
+After registering, you are redirected to `/users/profile/` where you should complete your company profile straight away. A **Company** badge (amber) is displayed in the navbar so your active role is always visible.
 
 ## Your Dashboard
 
@@ -38,7 +38,7 @@ The company dashboard at `/users/dashboard/` is the control centre for all your 
 
 <Steps>
   <Step title="Open the creation form">
-    From the dashboard, click **Create** on the Create Internship card, or navigate directly to `/internships/create/`. You must be logged in as a company to access this page — the view checks `user_type == "company"` and redirects other roles to the home page.
+    From the dashboard, click **Create** on the Create Internship card, or navigate directly to `/internships/create/`. You must be logged in as a company to access this page — the view checks `user_type != "company"` and redirects other roles to the home page.
   </Step>
   <Step title="Fill in the internship details">
     The creation form contains three required fields:
@@ -103,14 +103,14 @@ closed  →  POST /internships/<id>/toggle/  →  active
     The current filter value is passed to the template as `current_status` so the UI can highlight the active tab.
   </Step>
   <Step title="View a student's public profile">
-    Click on a student's name to open their public profile at `/users/profile/<id>/`. The public profile page displays the student's full name, university, degree, bio, skills, and any CV they have uploaded — all the information you need to make an informed decision.
+    Click on a student's name to open their public profile at `/users/profile/<user_id>/`. The public profile page displays the student's full name, university, degree, bio, skills, and any CV they have uploaded — all the information you need to make an informed decision.
   </Step>
   <Step title="Accept or reject the application">
     Make your decision by sending a `POST` request to the appropriate URL:
 
     ```
-    POST /applications/<id>/accepted/   →  status set to "accepted"
-    POST /applications/<id>/rejected/   →  status set to "rejected"
+    POST /applications/<app_id>/accepted/   →  status set to "accepted"
+    POST /applications/<app_id>/rejected/   →  status set to "rejected"
     ```
 
     The view validates that the application belongs to one of your internships before updating the record. Only `accepted` and `rejected` are valid status strings — any other value is ignored.
@@ -143,7 +143,7 @@ The unread count is displayed in the 🔔 bell icon in the top navigation bar. C
 
 ## Company Profile
 
-Keep your company profile up to date so students have accurate context when browsing your listings. Navigate to `/users/profile/edit/` to update the following fields:
+Keep your company profile up to date so students have accurate context when browsing your listings. Navigate to `/users/edit-profile/` to update the following fields:
 
 | Field | Description |
 |-------|-------------|

@@ -109,21 +109,25 @@ The default database backend is SQLite, configured in `config/settings.py`. For 
 
 <Steps>
   <Step title="Update DATABASES in config/settings.py">
+    Replace the SQLite `DATABASES` block with a PostgreSQL connection. Use `os.environ` to keep credentials out of source control.
+
     ```python
+    import os
+
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': 'internship_portal_db',
-            'USER': 'your_db_user',
-            'PASSWORD': 'your_db_password',
-            'HOST': 'localhost',
-            'PORT': '5432',
+            'NAME': os.environ.get('DB_NAME', 'internship_portal_db'),
+            'USER': os.environ.get('DB_USER', ''),
+            'PASSWORD': os.environ.get('DB_PASSWORD', ''),
+            'HOST': os.environ.get('DB_HOST', 'localhost'),
+            'PORT': os.environ.get('DB_PORT', '5432'),
         }
     }
     ```
   </Step>
   <Step title="Install the PostgreSQL adapter">
-    Add `psycopg2-binary` to your `requirements.txt` (or install it directly):
+    Install `psycopg2-binary` into your virtual environment:
 
     ```bash
     pip install psycopg2-binary
@@ -139,7 +143,7 @@ The default database backend is SQLite, configured in `config/settings.py`. For 
 </Steps>
 
 <Warning>
-  Never commit database credentials directly to source control. Use environment variables or a tool like `django-environ` to load secrets from a `.env` file, and add that file to `.gitignore`.
+  Never commit database credentials directly to source control. Use environment variables (as shown above with `os.environ`) and ensure your shell or deployment environment sets them before starting Django.
 </Warning>
 
 ## Adding a New Django App

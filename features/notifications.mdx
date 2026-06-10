@@ -4,7 +4,7 @@ sidebarTitle: "Notifications"
 description: "Learn how the portal creates, displays, and clears in-app notifications when students apply and when companies accept or reject applications."
 ---
 
-The Internship Portal includes a lightweight in-app notification system that keeps both students and companies informed in real time — without email or external services. Notifications are created automatically at two key points in the application workflow, injected into every page via a Django context processor, and displayed as an unread-count badge in the navbar. Marking them as read happens through an AJAX call so the page never needs to reload.
+The Internship Portal includes a lightweight in-app notification system that keeps both students and companies informed — without email or external services. Notifications are created automatically at two key points in the application workflow, injected into every page via a Django context processor, and displayed as an unread-count badge in the navbar. Marking them as read happens through a JavaScript `fetch` call so the page never needs to reload.
 
 ---
 
@@ -129,22 +129,31 @@ TEMPLATES = [
 
 ## Displaying Notifications
 
-Unread notifications appear in a dropdown **bell button** rendered in the site-wide navbar (inside `base.html`). The bell button shows a badge with the current unread count sourced from the `notifications_count` context variable. The dropdown list renders each notification's `message` field, ordered newest-first because the context processor queries with `.order_by("-created_at")`.
-
-The template logic looks roughly like this:
+Unread notifications appear in a Bootstrap **dropdown bell button** rendered in the site-wide navbar (`base.html`). The bell button always shows the current unread count sourced from the `notifications_count` context variable. The dropdown list renders each notification's `message` field, ordered newest-first because the context processor queries with `.order_by("-created_at")`. When there are no notifications, the dropdown shows a "No notifications" placeholder item.
 
 ```html
 <!-- templates/base.html  (excerpt) -->
-{% if notifications_count > 0 %}
-  <button id="notif-btn">🔔 {{ notifications_count }}</button>
-  <ul>
-    {% for notif in notifications %}
-      <li>{{ notif.message }}</li>
+<div class="dropdown">
+  <button
+    id="notifBtn"
+    class="btn btn-outline-light btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+  >
+    🔔 {{ notifications_count }}
+  </button>
+
+  <ul class="dropdown-menu dropdown-menu-end">
+    {% for n in notifications %}
+    <li>
+      <span class="dropdown-item small"> {{ n.message }} </span>
+    </li>
+    {% empty %}
+    <li>
+      <span class="dropdown-item text-muted"> No notifications </span>
+    </li>
     {% endfor %}
   </ul>
-{% else %}
-  <span>🔔 0</span>
-{% endif %}
+</div>
 ```
 
 ---
@@ -166,12 +175,22 @@ def mark_notifications_read(request):
 **JavaScript (in `base.html`):**
 
 ```javascript
-btn.addEventListener('click', function () {
-  fetch('/applications/notifications/read/', {
-    method: 'POST',
-    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
-  });
-  btn.innerHTML = '🔔 0';
+document.addEventListener("DOMContentLoaded", function () {
+  const btn = document.getElementById("notifBtn");
+
+  if (btn) {
+    btn.addEventListener("click", function () {
+      fetch("{% url 'mark_notifications_read' %}", {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": "{{ csrf_token }}",
+        },
+      });
+
+      // instant UI update (no reload needed)
+      btn.innerHTML = "🔔 0";
+    });
+  }
 });
 ```
 

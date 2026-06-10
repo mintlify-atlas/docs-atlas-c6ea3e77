@@ -64,7 +64,7 @@ The Internship Portal is built around two distinct user roles: **students** and 
 
 ## Registration
 
-New users register through a single form that extends Django's built-in `UserCreationForm`. The extra `user_type` field is what separates a student account from a company account — it is a required `ChoiceField` with the two allowed values.
+New users register through a single form that extends Django's built-in `UserCreationForm`. The extra `user_type` field is what separates a student account from a company account — it is a required `ChoiceField` with the two allowed values. The `username`, `password1`, and `password2` fields each carry a custom widget with Bootstrap classes; `user_type` uses a `Select` widget:
 
 ```python
 # users/forms.py
@@ -74,6 +74,24 @@ from django.contrib.auth.models import User
 
 
 class RegisterForm(UserCreationForm):
+    username = forms.CharField(
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "Username"}
+        )
+    )
+
+    password1 = forms.CharField(
+        widget=forms.PasswordInput(
+            attrs={"class": "form-control", "placeholder": "Password"}
+        )
+    )
+
+    password2 = forms.CharField(
+        widget=forms.PasswordInput(
+            attrs={"class": "form-control", "placeholder": "Confirm Password"}
+        )
+    )
+
     user_type = forms.ChoiceField(
         choices=[("student", "Student"), ("company", "Company")],
         widget=forms.Select(attrs={"class": "form-select"}),
@@ -186,3 +204,35 @@ The `Profile` model uses a single flat table for both roles. Student-specific an
 <Note>
   Student fields (`full_name`, `university`, `degree`, `skills`, `bio`, `cv`) and company fields (`company_name`, `industry`, `website`, `location`) all live on the **same `Profile` model**. The fields that do not apply to a given role are simply left blank — there is no separate table per role. Filter on `user_type` to determine which set of fields to display or validate.
 </Note>
+
+---
+
+## URL Routes
+
+All user-related routes are mounted under the `/users/` prefix in the main URL configuration.
+
+| Method | Path | View | Description |
+|--------|------|------|-------------|
+| `GET / POST` | `/users/register/` | `register` | Create a new student or company account |
+| `GET / POST` | `/users/login/` | `user_login` | Authenticate an existing user |
+| `GET` | `/users/logout/` | `user_logout` | Log out and redirect to login page |
+| `GET` | `/users/profile/` | `profile` | View the logged-in user's own profile |
+| `GET / POST` | `/users/edit-profile/` | `edit_profile` | Edit profile fields and upload files |
+| `GET` | `/users/profile/<user_id>/` | `public_profile` | View a student's public profile (student accounts only) |
+| `GET` | `/users/dashboard/` | `dashboard` | Role-aware dashboard for the logged-in user |
+
+```python
+# users/urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path("register/", views.register, name="register"),
+    path("login/", views.user_login, name="login"),
+    path("logout/", views.user_logout, name="logout"),
+    path("profile/", views.profile, name="profile"),
+    path("edit-profile/", views.edit_profile, name="edit_profile"),
+    path("profile/<int:user_id>/", views.public_profile, name="public_profile"),
+    path("dashboard/", views.dashboard, name="dashboard"),
+]
+```

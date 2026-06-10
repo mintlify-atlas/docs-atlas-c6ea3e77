@@ -121,6 +121,53 @@ In summary:
 
 ---
 
+## Service Layer
+
+The `internships/services.py` module provides the following functions. Note that while `create_internship` exists in the service layer, the `create_internship` **view** calls `Internship.objects.create()` directly rather than delegating to this function. All other mutating views (`edit_internship`, `delete_internship`, `toggle_status`) do use the service layer.
+
+```python
+# internships/services.py
+def get_student_internships():
+    return Internship.objects.filter(status="active")
+
+
+def get_company_internships(user):
+    return Internship.objects.filter(company=user)
+
+
+def get_public_internships():
+    return Internship.objects.filter(status="active")
+
+
+def create_internship(user, title, location, description):
+    return Internship.objects.create(
+        title=title, location=location, description=description, company=user
+    )
+
+
+def update_internship(internship, title, location, description):
+    internship.title = title
+    internship.location = location
+    internship.description = description
+    internship.save()
+    return internship
+
+
+def remove_internship(internship):
+    internship.delete()
+
+
+def toggle_internship_status(internship):
+    if internship.status == "active":
+        internship.status = "closed"
+    else:
+        internship.status = "active"
+    internship.save()
+    return internship
+```
+
+---
+
 ## Status Toggle
 
 A company can flip a listing between `active` and `closed` at any time without editing the listing's content. The toggle is handled by `toggle_internship_status()` in the service layer, which reads the current status and sets the opposite value before saving:
@@ -148,9 +195,13 @@ def toggle_status(request, internship_id):
         return redirect("/")
 
     toggle_internship_status(internship)
-    messages.success(request, "Internship status updated successfully!")
+    messages.success(request, "Internship deleted successfully!")
     return redirect("/internships/")
 ```
+
+<Warning>
+  The success message emitted by `toggle_status` reads `"Internship deleted successfully!"` — this is a known bug in the source code. The listing is **not** deleted; its status is toggled between `active` and `closed`. The message text is misleading but does not affect the underlying behaviour.
+</Warning>
 
 ---
 
